@@ -111,7 +111,7 @@
       <div class="stats">
         <div class="stat"><div class="stat-label">Latest week</div><div class="stat-value" id="sv-wk1">—</div><div class="stat-sub" id="sub-wk1"></div></div>
         <div class="stat"><div class="stat-label">Prior week</div><div class="stat-value" id="sv-wk2">—</div><div class="stat-sub" id="sub-wk2"></div></div>
-        <div class="stat"><div class="stat-label">Last month avg</div><div class="stat-value" id="sv-mo">—</div><div class="stat-sub" id="sub-mo"></div></div>
+        <div class="stat"><div class="stat-label">Prior month avg</div><div class="stat-value" id="sv-mo">—</div><div class="stat-sub" id="sub-mo"></div></div>
         <div class="stat"><div class="stat-label" id="lbl-chg">% change — selected</div><div class="stat-value" id="sv-chg">—</div><div class="stat-sub" id="sv-chg-abs">—</div></div>
         <div class="stat"><div class="stat-label" id="lbl-us">% change — US avg</div><div class="stat-value" id="sv-us-chg">—</div><div class="stat-sub" id="sv-us-chg-abs">—</div></div>
       </div>
@@ -288,15 +288,15 @@ function draw(){
   const latestWk=wkVals[wkVals.length-1], priorWk=wkVals[wkVals.length-2];
   const latestWkDate=wkLast.length?fmtWeekDate(wkLast[wkLast.length-1].date):'';
   const priorWkDate=wkLast.length>1?fmtWeekDate(wkLast[wkLast.length-2].date):'';
-  const lastMoPeriod=window.length?fmtPeriod(window[window.length-1]):'';
 
   document.getElementById('sv-wk1').textContent=latestWk!=null?'$'+latestWk.toFixed(3):'—';
   document.getElementById('sub-wk1').textContent=`Week of ${latestWkDate}`;
   document.getElementById('sv-wk2').textContent=priorWk!=null?'$'+priorWk.toFixed(3):'—';
   document.getElementById('sub-wk2').textContent=`Week of ${priorWkDate}`;
-  const aprS=sv[sv.length-1];
-  document.getElementById('sv-mo').textContent=aprS!=null?'$'+aprS.toFixed(3):'—';
-  document.getElementById('sub-mo').textContent=`${lastMoPeriod} monthly avg`;
+  const priorMoVal=sv[sv.length-2];
+  const priorMoPeriod=window.length>=2?fmtPeriod(window[window.length-2]):'';
+  document.getElementById('sv-mo').textContent=priorMoVal!=null?'$'+priorMoVal.toFixed(3):'—';
+  document.getElementById('sub-mo').textContent=`${priorMoPeriod} monthly avg`;
 
   function setPct(pEl,aEl,base,end){
     if(base==null||end==null){pEl.textContent='—';aEl.textContent='—';return;}
