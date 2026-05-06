@@ -117,20 +117,18 @@
       </div>
 
       <div class="chart-wrap">
-        <canvas id="fuelChart" role="img" aria-label="Monthly average retail gasoline prices with dotted bridge to last 4-week average"></canvas>
+        <canvas id="fuelChart" role="img" aria-label="Monthly average retail gasoline prices by region and state"></canvas>
       </div>
 
       <div class="chart-legend">
         <div class="leg-item"><div class="leg-line" style="background:var(--blue)"></div><span id="leg-sel">Selected</span></div>
         <div class="leg-item"><div class="leg-line" style="background:var(--red);opacity:.8"></div>US average</div>
-        <div class="leg-item"><div class="leg-dashed" style="border-color:var(--blue)"></div><div class="leg-dot" style="border-color:var(--blue)"></div>Last 4 wk avg (selected)</div>
-        <div class="leg-item"><div class="leg-dashed" style="border-color:var(--red);opacity:.8"></div><div class="leg-dot" style="border-color:var(--red);opacity:.8"></div>Last 4 wk avg (US)</div>
+
       </div>
 
       <div class="src-note">
         Source: <a href="https://www.eia.gov/dnav/pet/pet_pri_gnd_a_epm0_pte_dpgal_w.htm" target="_blank">EIA Weekly Retail Gasoline and Diesel Prices</a> ·
         Monthly values = simple average of weekly readings within that month ·
-        <span id="l4wNote"></span> ·
         Data fetched: <span id="fetchedDate"></span>
       </div>
 
@@ -247,42 +245,22 @@ function draw(){
 
   const wkLast=(allWeekly[k]||[]);
   const wkPrev=(allPrev[k]||[]);
-  const l4wS=avg4(wkLast.map(r=>r.value));
-  const l4wU=avg4((allWeekly[US]||[]).map(r=>r.value));
-
   const toVal=document.getElementById('toSel').value;
-  const isL4W=toVal==='L4W';
   const fi=parseInt(document.getElementById('fromSel').value);
-  const ti=isL4W?sv.length-1:Math.max(fi,parseInt(toVal));
+  const ti=Math.max(fi,parseInt(toVal));
 
-  const aprS=sv[sv.length-1], aprU=av[av.length-1];
-  const allV=[...sv,...(isUs?[]:av),l4wS,l4wU].filter(v=>v!=null);
+  const allV=[...sv,...(isUs?[]:av)].filter(v=>v!=null);
   const mn=Math.min(...allV), mx=Math.max(...allV);
-
-  // 13-point arrays: months + L4W slot
-  const solidS=[...sv,null], solidA=[...av,null];
-  const bridgeS=Array(sv.length+1).fill(null); bridgeS[sv.length-1]=aprS; bridgeS[sv.length]=l4wS;
-  const bridgeA=Array(av.length+1).fill(null); bridgeA[av.length-1]=aprU; bridgeA[av.length]=l4wU;
-  const dotS=Array(sv.length+1).fill(null); dotS[sv.length]=l4wS;
-  const dotU=Array(av.length+1).fill(null); dotU[av.length]=l4wU;
-
-  const chartLabels=[...months, `Last 4 wks\n${payload.l4w_label||''}`];
 
   let datasets;
   if(isUs){
     datasets=[
-      {data:solidA,borderColor:RED,borderWidth:2.5,pointRadius:3.5,pointBackgroundColor:RED,tension:.35,spanGaps:false,label:'US Average'},
-      {data:bridgeA,borderColor:RED,borderWidth:1.5,borderDash:[4,4],pointRadius:0,tension:0,spanGaps:false,label:'_bU'},
-      {data:dotU,showLine:false,pointRadius:7,pointStyle:'circle',pointBackgroundColor:'transparent',pointBorderColor:RED,pointBorderWidth:2.5,label:'US L4W avg'},
+      {data:sv,borderColor:RED,borderWidth:2.5,pointRadius:3.5,pointBackgroundColor:RED,tension:.35,spanGaps:false,label:'US Average'},
     ];
   } else {
     datasets=[
-      {data:solidS,borderColor:BLUE,borderWidth:2.5,pointRadius:3.5,pointBackgroundColor:BLUE,tension:.35,spanGaps:false,label:k},
-      {data:solidA,borderColor:RED,borderWidth:1.5,borderDash:[5,4],pointRadius:2,pointBackgroundColor:RED,tension:.35,spanGaps:false,label:'US Average'},
-      {data:bridgeS,borderColor:BLUE,borderWidth:1.5,borderDash:[4,4],pointRadius:0,tension:0,spanGaps:false,label:'_bS'},
-      {data:bridgeA,borderColor:RED,borderWidth:1.5,borderDash:[4,4],pointRadius:0,tension:0,spanGaps:false,label:'_bU'},
-      {data:dotS,showLine:false,pointRadius:7,pointStyle:'circle',pointBackgroundColor:'transparent',pointBorderColor:BLUE,pointBorderWidth:2.5,label:'L4W avg'},
-      {data:dotU,showLine:false,pointRadius:7,pointStyle:'circle',pointBackgroundColor:'transparent',pointBorderColor:RED,pointBorderWidth:2.5,label:'US L4W avg'},
+      {data:sv,borderColor:BLUE,borderWidth:2.5,pointRadius:3.5,pointBackgroundColor:BLUE,tension:.35,spanGaps:false,label:k},
+      {data:av,borderColor:RED,borderWidth:1.5,borderDash:[5,4],pointRadius:2,pointBackgroundColor:RED,tension:.35,spanGaps:false,label:'US Average'},
     ];
   }
 
@@ -290,15 +268,12 @@ function draw(){
   if(chartInst) chartInst.destroy();
   chartInst=new Chart(document.getElementById('fuelChart'),{
     type:'line',
-    data:{labels:chartLabels,datasets},
+    data:{labels:months,datasets},
     options:{
       responsive:true,maintainAspectRatio:false,
       plugins:{
         legend:{display:false},
-        tooltip:{
-          filter:item=>!item.dataset.label.startsWith('_'),
-          callbacks:{label:ctx=>ctx.parsed.y==null?null:ctx.dataset.label+': $'+ctx.parsed.y.toFixed(3)+'/gal'}
-        }
+        tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': $'+ctx.parsed.y.toFixed(3)+'/gal'}}
       },
       scales:{
         x:{ticks:{font:{size:11},color:c.t,autoSkip:false,maxRotation:35},grid:{color:c.g}},
@@ -331,18 +306,11 @@ function draw(){
   }
 
   const fromLabel=fmtPeriod(window[fi]||'');
-  if(isL4W){
-    document.getElementById('lbl-chg').textContent=`% change — selected (${fromLabel} → last 4 wks)`;
-    document.getElementById('lbl-us').textContent=`% change — US avg (${fromLabel} → last 4 wks)`;
-    setPct(document.getElementById('sv-chg'),document.getElementById('sv-chg-abs'),sv[fi],l4wS);
-    setPct(document.getElementById('sv-us-chg'),document.getElementById('sv-us-chg-abs'),av[fi],l4wU);
-  } else {
-    const toLabel=fmtPeriod(window[ti]||'');
-    document.getElementById('lbl-chg').textContent=`% change — selected (${fromLabel} → ${toLabel})`;
-    document.getElementById('lbl-us').textContent=`% change — US avg (${fromLabel} → ${toLabel})`;
-    setPct(document.getElementById('sv-chg'),document.getElementById('sv-chg-abs'),sv[fi],sv[ti]);
-    setPct(document.getElementById('sv-us-chg'),document.getElementById('sv-us-chg-abs'),av[fi],av[ti]);
-  }
+  const toLabel=fmtPeriod(window[ti]||'');
+  document.getElementById('lbl-chg').textContent=`% change — selected (${fromLabel} → ${toLabel})`;
+  document.getElementById('lbl-us').textContent=`% change — US avg (${fromLabel} → ${toLabel})`;
+  setPct(document.getElementById('sv-chg'),document.getElementById('sv-chg-abs'),sv[fi],sv[ti]);
+  setPct(document.getElementById('sv-us-chg'),document.getElementById('sv-us-chg-abs'),av[fi],av[ti]);
 
   document.getElementById('leg-sel').textContent=k;
   document.getElementById('noteLabel').textContent=isUs?'National average':'vs US average (dashed)';
@@ -370,7 +338,6 @@ async function init(){
 
     // Footer note
     document.getElementById('fetchedDate').textContent=payload.fetched_at?fmtDate(payload.fetched_at):'unknown';
-    document.getElementById('l4wNote').textContent=`Last 4 wk avg = ${payload.l4w_label||'last 4 weeks'}`;
 
     // Series dropdown
     const seriesSel=document.getElementById('seriesSel');
@@ -396,17 +363,13 @@ async function init(){
       fromSel.appendChild(a);
     });
 
-    // To dropdown — months then L4W at end
+    // To dropdown — monthly options only
     const toSel=document.getElementById('toSel');
     window.forEach((p,i)=>{
       const b=document.createElement('option'); b.value=i; b.textContent=fmtPeriod(p);
       if(i===window.length-1) b.selected=true;
       toSel.appendChild(b);
     });
-    const l4wOpt=document.createElement('option');
-    l4wOpt.value='L4W';
-    l4wOpt.textContent=`Last 4 weeks (${payload.l4w_label||'rolling'})`;
-    toSel.appendChild(l4wOpt);
 
     buildPaddLegend();
 
