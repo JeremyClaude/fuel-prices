@@ -294,6 +294,7 @@ function draw(){
   document.getElementById('sub-wk1').textContent=`Week of ${latestWkDate}`;
   document.getElementById('sv-wk2').textContent=priorWk!=null?'$'+priorWk.toFixed(3):'—';
   document.getElementById('sub-wk2').textContent=`Week of ${priorWkDate}`;
+  const aprS=sv[sv.length-1];
   document.getElementById('sv-mo').textContent=aprS!=null?'$'+aprS.toFixed(3):'—';
   document.getElementById('sub-mo').textContent=`${lastMoPeriod} monthly avg`;
 
