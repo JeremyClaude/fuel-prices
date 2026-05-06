@@ -2,10 +2,9 @@
 """
 fetch_data.py
 Fetches weekly retail gasoline price data from EIA DNAV LeafHandler pages.
-Rolls weekly readings up to monthly averages (EIA methodology: simple average of weeks in month).
-Stores last 4 and prior 4 weekly readings per series for the rolling 4-week feature.
+Rolls weekly readings up to monthly averages (EIA methodology).
+Stores last 4 and prior 4 weekly readings per series.
 Writes data.json consumed by index.html.
-Run daily by GitHub Actions — no API key required.
 """
 
 import json
@@ -40,47 +39,54 @@ MONTH_MAP = {
 
 def fetch_weekly(series_id):
     """
-    Fetch weekly LeafHandler page and return list of
-    {"date": "YYYY-MM-DD", "value": float} sorted oldest-first.
-    Page layout: Year-Month rows with week columns showing MM/DD | value.
+    Fetch EIA LeafHandler page and extract weekly readings.
+    The page contains a table with rows like:
+      <td>2025-May</td><td>05/05</td><td>3.296</td><td>05/12</td><td>3.305</td>...
+    Returns list of {"date": "YYYY-MM-DD", "value": float} sorted oldest-first.
     """
     url = f"https://www.eia.gov/dnav/pet/hist/LeafHandler.ashx?n=PET&s={series_id}&f=W"
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with urllib.request.urlopen(req, timeout=60) as resp:
         html = resp.read().decode("utf-8", errors="replace")
 
-    readings = []
+    # Strip all HTML tags to get plain text, then parse
+    # Each row looks like: 2025-May  05/05  3.296  05/12  3.305  05/19  3.289  05/26  3.261
+    text = re.sub(r'<[^>]+>', ' ', html)
+    text = re.sub(r'&nbsp;', ' ', text)
+    text = re.sub(r'\s+', ' ', text)
 
-    # Parse rows like: | 2025-May | 05/05 | 3.296 | 05/12 | 3.305 | ...
-    row_re = re.compile(
-        r'\|\s*(\d{4})-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*\|'
-        r'((?:\s*(?:\d{2}/\d{2})?\s*\|\s*(?:[0-9.]+|-)?\s*\|?){1,10})',
+    readings = {}
+
+    # Find year-month markers followed by date/value pairs
+    # Pattern: YYYY-Mon followed by pairs of MM/DD and decimal values
+    row_pattern = re.compile(
+        r'(\d{4})-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+'
+        r'((?:\d{2}/\d{2}\s+[\d.]+\s*){1,5})',
         re.IGNORECASE
     )
-    cell_re = re.compile(r'(\d{2}/(\d{2}))\s*\|\s*([0-9]+\.[0-9]+)')
+    pair_pattern = re.compile(r'(\d{2}/\d{2})\s+([\d.]+)')
 
-    for m in row_re.finditer(html):
-        year = int(m.group(1))
-        mon  = MONTH_MAP[m.group(2).capitalize()]
-        seg  = m.group(3)
-        for cell in cell_re.finditer(seg):
-            md_str = cell.group(1)   # e.g. "05/05"
-            val    = float(cell.group(3))
-            mo_str, dy_str = md_str.split("/")
+    for row in row_pattern.finditer(text):
+        year = int(row.group(1))
+        mon  = MONTH_MAP[row.group(2).capitalize()]
+        seg  = row.group(3)
+
+        for pair in pair_pattern.finditer(seg):
+            md  = pair.group(1)   # MM/DD
+            val = float(pair.group(2))
+            mo_str, dy_str = md.split("/")
             mo, dy = int(mo_str), int(dy_str)
-            # Determine full year for the week-ending date
+
+            # Handle year boundary: Dec row with Jan dates
             yr = year
-            if mo < mon - 1:   # crossed into next year (Dec row, Jan date)
+            if mo == 1 and mon == 12:
                 yr = year + 1
+
             date_str = f"{yr}-{mo:02d}-{dy:02d}"
-            readings.append({"date": date_str, "value": val})
+            readings[date_str] = val
 
-    # Deduplicate (same date may appear in adjacent rows near month boundary)
-    seen = {}
-    for r in readings:
-        seen[r["date"]] = r["value"]
-
-    return [{"date": d, "value": v} for d, v in sorted(seen.items())]
+    result = [{"date": d, "value": v} for d, v in sorted(readings.items())]
+    return result
 
 
 def rollup_monthly(weekly_readings, window_months=13):
@@ -100,29 +106,24 @@ def rollup_monthly(weekly_readings, window_months=13):
 def main():
     print(f"Fetching weekly EIA data for {len(SERIES)} series...")
     errors = []
-    monthly_out  = {}
-    last4_out    = {}
-    prev4_out    = {}
+    monthly_out = {}
+    last4_out   = {}
+    prev4_out   = {}
 
     for label, sid in SERIES.items():
         try:
             wk = fetch_weekly(sid)
             if not wk:
-                raise ValueError("No data returned")
+                raise ValueError("No data parsed from page")
 
             monthly_out[label] = rollup_monthly(wk, window_months=13)
-
-            # Last 4 weekly readings
-            last4 = wk[-4:] if len(wk) >= 4 else wk
-            last4_out[label] = last4
-
-            # Prior 4 weekly readings (weeks 5-8 ago)
-            prev_pool = wk[:-4] if len(wk) > 4 else []
-            prev4_out[label] = prev_pool[-4:] if len(prev_pool) >= 4 else prev_pool
+            last4_out[label]   = wk[-4:] if len(wk) >= 4 else wk
+            prev_pool          = wk[:-4] if len(wk) > 4 else []
+            prev4_out[label]   = prev_pool[-4:] if len(prev_pool) >= 4 else prev_pool
 
             latest_wk = wk[-1]["date"] if wk else "—"
             latest_mo = monthly_out[label][-1]["period"] if monthly_out[label] else "—"
-            print(f"  {label}: {len(wk)} weeks · latest week {latest_wk} · latest month {latest_mo}")
+            print(f"  {label}: {len(wk)} weeks · latest {latest_wk} · month {latest_mo}")
 
         except Exception as e:
             print(f"  ERROR {label}: {e}")
@@ -131,14 +132,13 @@ def main():
     us_monthly = monthly_out.get("US Average", [])
     window = [r["period"] for r in us_monthly]
 
-    # Build L4W label from actual week-ending dates
     us_last4_dates = [r["date"] for r in last4_out.get("US Average", [])]
     if len(us_last4_dates) == 4:
         def fmt(d):
             parts = d.split("-")
             months = ["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
             return f"{months[int(parts[1])]} {int(parts[2])}"
-        l4w_label = f"{fmt(us_last4_dates[0])} – {fmt(us_last4_dates[-1])} '{us_last4_dates[-1][2:4]}"
+        l4w_label = f"{fmt(us_last4_dates[0])} \u2013 {fmt(us_last4_dates[-1])} '{us_last4_dates[-1][2:4]}"
     else:
         l4w_label = "Last 4 weeks"
 
