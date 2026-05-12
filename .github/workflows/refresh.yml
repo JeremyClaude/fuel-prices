@@ -2,7 +2,7 @@ name: Refresh EIA Data
 
 on:
   schedule:
-    - cron: "0 14 * * *"
+    - cron: "0 23 * * *"
   workflow_dispatch:
 
 jobs:
