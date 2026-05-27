@@ -2,7 +2,7 @@ name: Refresh EIA Data
 
 on:
   schedule:
-    - cron: "0 23 * * *"
+    - cron: "0 14 * * 3"
   workflow_dispatch:
 
 jobs:
@@ -32,5 +32,5 @@ jobs:
             echo "No data changes."
           else
             git commit -m "chore: refresh EIA data $(date -u +%Y-%m-%d)"
-            git push
+            git push || (sleep 30 && git push)
           fi
