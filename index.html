@@ -3,92 +3,121 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>US Retail Fuel Prices — EIA Weekly Data</title>
+<title>US Retail Fuel Prices — Pye-Barker Fire & Safety</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
 <style>
   :root {
-    --bg:#ffffff;--bg2:#f5f5f3;--bg3:#eeece6;
-    --border:rgba(0,0,0,0.10);--border2:rgba(0,0,0,0.18);
-    --text:#1a1a18;--text2:#5f5e5a;--text3:#888780;
-    --blue:#378ADD;--red:#D85A30;--green:#3B6D11;
+    --pb-navy:#00314F;
+    --pb-blue:#235eac;
+    --pb-green:#0db14b;
+    --bg:#ffffff;
+    --bg2:#f0f4f8;
+    --bg3:#e8eef4;
+    --border:rgba(0,49,79,0.12);
+    --border2:rgba(0,49,79,0.25);
+    --text:#00314F;
+    --text2:#3a5a6e;
+    --text3:#6b8a9a;
     --r:8px;--rl:12px;
   }
-  @media(prefers-color-scheme:dark){
-    :root{--bg:#1a1a18;--bg2:#242422;--bg3:#2c2c2a;
-      --border:rgba(255,255,255,0.10);--border2:rgba(255,255,255,0.20);
-      --text:#f0ede6;--text2:#b4b2a9;--text3:#888780;}
-  }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    background:var(--bg3);color:var(--text);min-height:100vh;padding:2rem 1rem}
-  .page{max-width:940px;margin:0 auto}
-  header{margin-bottom:1.75rem}
-  header h1{font-size:22px;font-weight:500;margin-bottom:4px}
-  header p{font-size:13px;color:var(--text2)}
-  header p a{color:var(--blue);text-decoration:none}
-  .badge{display:inline-block;background:var(--bg2);border:0.5px solid var(--border);
-    border-radius:20px;font-size:11px;color:var(--text2);padding:2px 8px;margin-left:8px;vertical-align:middle}
-  .card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--rl);padding:1.5rem;margin-bottom:1.25rem}
+  body{font-family:Verdana,Geneva,Tahoma,sans-serif;background:var(--bg3);color:var(--text);min-height:100vh;padding:2rem 1rem}
+  .page{max-width:960px;margin:0 auto}
+
+  /* Header / branding */
+  .site-header{display:flex;align-items:center;justify-content:space-between;
+    background:var(--pb-navy);border-radius:var(--rl);padding:1rem 1.5rem;margin-bottom:1.5rem}
+  .site-header-left{display:flex;align-items:center;gap:14px}
+  .logo-mark{width:44px;height:44px;flex-shrink:0}
+  .header-titles{}
+  .header-title{font-size:18px;font-weight:700;color:#ffffff;letter-spacing:-0.2px}
+  .header-sub{font-size:11px;color:rgba(255,255,255,0.65);margin-top:2px}
+  .badge{display:inline-block;background:var(--pb-green);border-radius:20px;
+    font-size:11px;color:#ffffff;font-weight:600;padding:3px 10px;margin-left:8px;vertical-align:middle}
+
+  .card{background:var(--bg);border:1px solid var(--border);border-radius:var(--rl);
+    padding:1.5rem;margin-bottom:1.25rem;box-shadow:0 1px 4px rgba(0,49,79,0.06)}
   .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:1.25rem}
-  .pct-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:1.25rem;font-size:13px;color:var(--text2)}
+  .pct-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:1.25rem;
+    font-size:13px;color:var(--text2)}
   .pct-row label{font-size:12px;color:var(--text2);white-space:nowrap}
   .pct-row select{font-size:12px}
-  select{appearance:none;background:var(--bg2);border:0.5px solid var(--border2);
+  select{appearance:none;background:var(--bg2);border:1px solid var(--border2);
     border-radius:var(--r);color:var(--text);font-size:13px;padding:7px 28px 7px 10px;cursor:pointer;
-    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+    font-family:Verdana,Geneva,Tahoma,sans-serif;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2300314F'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:right 9px center}
-  select:focus{outline:none;box-shadow:0 0 0 2px var(--blue)}
+  select:focus{outline:none;box-shadow:0 0 0 2px var(--pb-blue)}
   #seriesSel{min-width:210px}
+
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:1.5rem}
-  .stat{background:var(--bg2);border-radius:var(--r);padding:.875rem 1rem}
-  .stat-label{font-size:11px;color:var(--text3);margin-bottom:5px;line-height:1.3}
-  .stat-value{font-size:20px;font-weight:500;letter-spacing:-0.3px}
-  .stat-sub{font-size:11px;color:var(--text3);margin-top:3px}
-  .up{color:var(--red)}.dn{color:var(--green)}.fl{color:var(--text2)}
+  .stat{background:var(--bg2);border-radius:var(--r);padding:.875rem 1rem;
+    border-left:3px solid var(--pb-green)}
+  .stat-label{font-size:10px;color:var(--text3);margin-bottom:5px;line-height:1.3;
+    text-transform:uppercase;letter-spacing:0.4px;font-weight:600}
+  .stat-value{font-size:20px;font-weight:700;letter-spacing:-0.3px;color:var(--pb-navy)}
+  .stat-sub{font-size:10px;color:var(--text3);margin-top:3px}
+  .up{color:#8B0000}.dn{color:var(--pb-green)}.fl{color:var(--text2)}
+
   .chart-wrap{position:relative;width:100%;height:320px;margin-bottom:.75rem}
   .chart-legend{display:flex;flex-wrap:wrap;gap:16px;font-size:12px;color:var(--text2)}
   .leg-item{display:flex;align-items:center;gap:6px}
   .leg-line{width:22px;height:2.5px;border-radius:2px}
-  .leg-dashed{width:22px;height:0;border-top:2.5px dashed}
-  .leg-dot{width:10px;height:10px;border-radius:50%;border:2.5px solid;background:transparent}
   .src-note{font-size:11px;color:var(--text3);margin-top:.75rem;line-height:1.5}
-  .src-note a{color:var(--blue);text-decoration:none}
-  .collapsible{border:0.5px solid var(--border);border-radius:var(--rl);margin-top:1.25rem;overflow:hidden}
+  .src-note a{color:var(--pb-blue);text-decoration:none}
+
+  .collapsible{border:1px solid var(--border);border-radius:var(--rl);margin-top:1.25rem;overflow:hidden}
   .coll-header{display:flex;justify-content:space-between;align-items:center;
-    padding:.875rem 1.125rem;cursor:pointer;background:var(--bg2);user-select:none}
-  .coll-header:hover{background:var(--bg3)}
-  .coll-title{font-size:13px;font-weight:500}
-  .coll-arrow{font-size:10px;color:var(--text3);transition:transform .2s;display:inline-block}
+    padding:.875rem 1.125rem;cursor:pointer;background:var(--pb-navy);user-select:none}
+  .coll-header:hover{background:#004266}
+  .coll-title{font-size:13px;font-weight:600;color:#ffffff}
+  .coll-arrow{font-size:10px;color:rgba(255,255,255,0.7);transition:transform .2s;display:inline-block}
   .coll-arrow.open{transform:rotate(180deg)}
   .coll-body{display:none;padding:1.25rem;background:var(--bg)}
   .coll-body.open{display:block}
   .padd-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start}
-  .padd-subtitle{font-size:12px;font-weight:500;color:var(--text);margin-bottom:12px}
+  .padd-subtitle{font-size:12px;font-weight:600;color:var(--pb-navy);margin-bottom:12px}
   .padd-row{display:flex;align-items:flex-start;gap:8px;margin-bottom:9px}
   .padd-swatch{width:12px;height:12px;border-radius:2px;flex-shrink:0;margin-top:1px}
-  .padd-name{font-size:12px;font-weight:500;color:var(--text)}
+  .padd-name{font-size:12px;font-weight:600;color:var(--pb-navy)}
   .padd-region{font-size:11px;color:var(--text2);margin-top:1px}
   .padd-states{font-size:10px;color:var(--text3);margin-top:1px}
   .map-credit{font-size:10px;color:var(--text3);margin-top:8px}
-  .map-credit a{color:var(--blue);text-decoration:none}
-  .err{font-size:13px;color:var(--red);padding:.75rem 1rem;background:#fcebeb;
-    border-radius:var(--r);margin-bottom:1rem;display:none}
+  .map-credit a{color:var(--pb-blue);text-decoration:none}
+
+  .err{font-size:13px;color:#c0392b;padding:.75rem 1rem;background:#f0f4fb;
+    border-radius:var(--r);margin-bottom:1rem;display:none;border:1px solid #c6d4f5}
   .loading{text-align:center;padding:3rem;color:var(--text3);font-size:14px}
   #mainContent{display:none}
-  footer{margin-top:1.5rem;font-size:11px;color:var(--text3);line-height:1.6}
-  footer a{color:var(--blue);text-decoration:none}
+  footer{margin-top:1.5rem;font-size:11px;color:var(--text3);line-height:1.6;text-align:center}
+  footer a{color:var(--pb-blue);text-decoration:none}
+  .divider{height:2px;background:linear-gradient(90deg,var(--pb-navy),var(--pb-blue),var(--pb-green));
+    border-radius:2px;margin-bottom:1.25rem}
   @media(max-width:600px){.padd-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <div class="page">
 
-  <header>
-    <h1>US Retail Fuel Prices <span class="badge" id="dataDate">Loading…</span></h1>
-    <p>Monthly average retail gasoline prices by region and state, updated daily from the <a href="https://www.eia.gov/petroleum/gasdiesel/" target="_blank">U.S. Energy Information Administration</a> · All grades, all formulations · $/gallon</p>
-  </header>
+  <div class="site-header">
+    <div class="site-header-left">
+      <!-- Pye-Barker logo mark (flame + shield SVG) -->
+      <svg class="logo-mark" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="44" height="44" rx="8" fill="#0db14b"/>
+        <path d="M22 6C22 6 14 14 14 22c0 4.4 3.6 8 8 8s8-3.6 8-8c0-2.2-.9-4.2-2.3-5.7
+          C27.1 18.1 26 20 26 22c0 2.2-1.8 4-4 4s-4-1.8-4-4c0-4 4-10 4-16z" fill="white"/>
+        <path d="M22 20c0 0-3 3-3 5.5C19 27.4 20.3 29 22 29s3-1.6 3-3.5C25 23 22 20 22 20z" fill="#00314F"/>
+      </svg>
+      <div class="header-titles">
+        <div class="header-title">US Retail Fuel Prices <span class="badge" id="dataDate">Loading…</span></div>
+        <div class="header-sub">Monthly average retail gasoline prices by region and state · Source: U.S. Energy Information Administration · $/gallon</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
 
   <div class="err" id="errMsg"></div>
   <div class="loading" id="loadingMsg">Loading EIA data…</div>
@@ -121,9 +150,8 @@
       </div>
 
       <div class="chart-legend">
-        <div class="leg-item"><div class="leg-line" style="background:var(--blue)"></div><span id="leg-sel">Selected</span></div>
-        <div class="leg-item"><div class="leg-line" style="background:var(--red);opacity:.8"></div>US average</div>
-
+        <div class="leg-item"><div class="leg-line" style="background:#235eac"></div><span id="leg-sel">Selected</span></div>
+        <div class="leg-item"><div class="leg-line" style="background:#00314F;opacity:.8"></div>US average</div>
       </div>
 
       <div class="src-note">
@@ -153,12 +181,12 @@
   </div>
 
   <footer>
-    Data updated daily via GitHub Actions · <a href="https://www.eia.gov/opendata/" target="_blank">EIA Open Data</a>
+    Pye-Barker Fire &amp; Safety · Data updated weekly via GitHub Actions · <a href="https://www.eia.gov/opendata/" target="_blank">EIA Open Data</a>
   </footer>
 
 </div>
 <script>
-const BLUE='#378ADD', RED='#D85A30';
+const BLUE='#235eac', RED='#00314F';
 const US='US Average';
 let payload={}, allData={}, allWeekly={}, allPrev={}, chartInst=null, mapBuilt=false;
 
@@ -176,12 +204,7 @@ function fmtWeekDate(d){
   const mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m)-1];
   return `${mn} ${parseInt(day)} '${y.slice(2)}`;
 }
-function gc(){
-  const dk=matchMedia('(prefers-color-scheme:dark)').matches;
-  return{g:dk?'rgba(255,255,255,.07)':'rgba(0,0,0,.07)',t:dk?'#aaa':'#999'};
-}
 
-// PADD data
 const PADDS=[
   {label:"East Coast (PADD 1)",    color:"#185FA5",region:"Northeast, Mid-Atlantic, Southeast",
    states:"CT DE FL GA MA MD ME NC NH NJ NY PA RI SC VA VT WV DC",
@@ -192,7 +215,7 @@ const PADDS=[
   {label:"Gulf Coast (PADD 3)",    color:"#BA7517",region:"South",
    states:"AL AR LA MS NM TX",
    fips:["01","05","22","28","35","48"]},
-  {label:"Rocky Mountain (PADD 4)",color:"#993556",region:"Southeast, West",
+  {label:"Rocky Mountain (PADD 4)",color:"#993556",region:"Southwest, West",
    states:"CO ID MT UT WY",
    fips:["08","16","30","49","56"]},
   {label:"West Coast (PADD 5)",    color:"#534AB7",region:"West",
@@ -212,7 +235,6 @@ function buildPaddLegend(){
 
 function buildMap(){
   if(mapBuilt)return; mapBuilt=true;
-  const dk=matchMedia('(prefers-color-scheme:dark)').matches;
   const svg=d3.select('#paddMap').append('svg')
     .attr('viewBox','0 0 480 295').attr('width','100%')
     .attr('role','img').attr('aria-label','US map colored by PADD region');
@@ -221,8 +243,8 @@ function buildMap(){
     const path=d3.geoPath(proj);
     svg.selectAll('path').data(topojson.feature(us,us.objects.states).features).join('path')
       .attr('d',path)
-      .attr('fill',d=>{const f=String(d.id).padStart(2,'0');return fipsToColor[f]||(dk?'#2c2c2a':'#d3d1c7');})
-      .attr('stroke',dk?'rgba(255,255,255,.25)':'rgba(255,255,255,.8)').attr('stroke-width',0.5)
+      .attr('fill',d=>{const f=String(d.id).padStart(2,'0');return fipsToColor[f]||'#d3d1c7';})
+      .attr('stroke','rgba(255,255,255,0.8)').attr('stroke-width',0.5)
       .append('title').text(d=>{const f=String(d.id).padStart(2,'0');const p=PADDS.find(x=>x.fips.includes(f));return p?p.label:'';});
   }).catch(()=>{});
 }
@@ -244,13 +266,17 @@ function draw(){
   const months=window.map(fmtPeriod);
 
   const wkLast=(allWeekly[k]||[]);
-  const wkPrev=(allPrev[k]||[]);
   const toVal=document.getElementById('toSel').value;
   const fi=parseInt(document.getElementById('fromSel').value);
   const ti=Math.max(fi,parseInt(toVal));
 
   const allV=[...sv,...(isUs?[]:av)].filter(v=>v!=null);
   const mn=Math.min(...allV), mx=Math.max(...allV);
+
+  // Snap y-axis to nearest $0.20 tick
+  const step=0.20;
+  const yMin=Math.floor(mn/step)*step;
+  const yMax=Math.ceil(mx/step)*step;
 
   let datasets;
   if(isUs){
@@ -264,7 +290,8 @@ function draw(){
     ];
   }
 
-  const c=gc();
+  const gridColor='rgba(0,49,79,0.07)';
+  const tickColor='#6b8a9a';
   if(chartInst) chartInst.destroy();
   chartInst=new Chart(document.getElementById('fuelChart'),{
     type:'line',
@@ -276,9 +303,12 @@ function draw(){
         tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': $'+ctx.parsed.y.toFixed(3)+'/gal'}}
       },
       scales:{
-        x:{ticks:{font:{size:11},color:c.t,autoSkip:false,maxRotation:35},grid:{color:c.g}},
-        y:{min:parseFloat((mn-.12).toFixed(2)),max:parseFloat((mx+.12).toFixed(2)),
-           ticks:{font:{size:11},color:c.t,callback:v=>'$'+v.toFixed(2)},grid:{color:c.g}}
+        x:{ticks:{font:{size:11,family:'Verdana'},color:tickColor,autoSkip:false,maxRotation:35},
+           grid:{color:gridColor}},
+        y:{min:yMin, max:yMax,
+           ticks:{font:{size:11,family:'Verdana'},color:tickColor,
+                  stepSize:step,callback:v=>'$'+v.toFixed(2)},
+           grid:{color:gridColor}}
       }
     }
   });
@@ -333,14 +363,10 @@ async function init(){
 
     if(!allData[US]||!allData[US].length) throw new Error('US Average data missing');
 
-    // Header badge
     const latestPeriod=window[window.length-1];
     document.getElementById('dataDate').textContent='Latest: '+(latestPeriod?fmtPeriod(latestPeriod):'?');
-
-    // Footer note
     document.getElementById('fetchedDate').textContent=payload.fetched_at?fmtDate(payload.fetched_at):'unknown';
 
-    // Series dropdown
     const seriesSel=document.getElementById('seriesSel');
     [
       {label:"National",     keys:["US Average"]},
@@ -356,7 +382,6 @@ async function init(){
       seriesSel.appendChild(og);
     });
 
-    // From dropdown
     const fromSel=document.getElementById('fromSel');
     window.forEach((p,i)=>{
       const a=document.createElement('option'); a.value=i; a.textContent=fmtPeriod(p);
@@ -364,7 +389,6 @@ async function init(){
       fromSel.appendChild(a);
     });
 
-    // To dropdown — monthly options only
     const toSel=document.getElementById('toSel');
     window.forEach((p,i)=>{
       const b=document.createElement('option'); b.value=i; b.textContent=fmtPeriod(p);
