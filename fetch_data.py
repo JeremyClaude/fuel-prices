@@ -1,19 +1,28 @@
 #!/usr/bin/env python3
 """
 fetch_data.py  —  Pye-Barker Fire & Safety fuel price tracker
-Fetches weekly retail gasoline price data from EIA DNAV LeafHandler pages.
-Rolls weekly readings up to monthly averages (EIA methodology).
-Writes data.json consumed by index.html.
+Fetches weekly retail gasoline prices from the official EIA Open Data API v2.
+Rolls weekly readings up to monthly averages, writes data.json for index.html.
 
-Parser handles the EIA table format:
-| 2026-Jun | 06/01 | 4.439 | 06/08 | 4.281 | 06/15 | 4.187 | | | | |
+Resilience:
+- Single batched API call for all 15 series (one request, not 15)
+- Retry with backoff on API failure
+- Merge-with-previous: a failed series keeps its last known data,
+  so the site never breaks
+API key is read from the EIA_API_KEY environment variable
+(stored as a GitHub Actions secret — never in this file or the repo).
 """
 
 import json
-import re
+import os
+import sys
+import time
 import urllib.request
+import urllib.parse
 from collections import defaultdict
 from datetime import datetime, timezone
+
+API_KEY = os.environ.get("EIA_API_KEY", "").strip()
 
 SERIES = {
     "US Average":              "EMM_EPM0_PTE_NUS_DPG",
@@ -32,128 +41,136 @@ SERIES = {
     "Texas":                   "EMM_EPM0_PTE_STX_DPG",
     "Washington":              "EMM_EPM0_PTE_SWA_DPG",
 }
+ID_TO_LABEL = {v: k for k, v in SERIES.items()}
 
-MONTH_MAP = {
-    "jan":1,"feb":2,"mar":3,"apr":4,"may":5,"jun":6,
-    "jul":7,"aug":8,"sep":9,"oct":10,"nov":11,"dec":12,
-}
+API_URL = "https://api.eia.gov/v2/petroleum/pri/gnd/data/"
 
 
-def fetch_weekly(series_id):
+def fetch_all_weekly(retries=3, backoff=20):
     """
-    Fetch EIA LeafHandler page and parse all weekly readings.
-    Returns list of {"date": "YYYY-MM-DD", "value": float} oldest-first.
+    One batched API request for all series, weekly frequency.
+    Returns {label: [{"date": "YYYY-MM-DD", "value": float}, ...]} oldest-first.
+    Raises on total failure after retries.
     """
-    url = f"https://www.eia.gov/dnav/pet/hist/LeafHandler.ashx?n=PET&s={series_id}&f=W"
-    req = urllib.request.Request(url, headers={
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    })
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        html = resp.read().decode("utf-8", errors="replace")
+    params = [
+        ("api_key", API_KEY),
+        ("frequency", "weekly"),
+        ("data[0]", "value"),
+        ("sort[0][column]", "period"),
+        ("sort[0][direction]", "desc"),
+        ("length", "2000"),   # 15 series x ~60 weeks = ~900 rows; ample headroom
+    ]
+    for sid in SERIES.values():
+        params.append(("facets[series][]", sid))
 
-    # Strip HTML tags
-    text = re.sub(r'<[^>]+>', ' ', html)
-    text = re.sub(r'&nbsp;|&#160;', ' ', text)
-    text = re.sub(r'\s+', ' ', text)
+    url = API_URL + "?" + urllib.parse.urlencode(params)
 
-    readings = {}
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "PyeBarker-FuelTracker/1.0"})
+            with urllib.request.urlopen(req, timeout=90) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
 
-    # Primary: parse table rows
-    # Pattern: YYYY-Mon followed by pairs of MM/DD and price values
-    # Handles both plain text and pipe-separated table formats
-    row_re = re.compile(
-        r'\b(\d{4})[- ](Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b'
-        r'([\s\S]{0,500}?)(?=\d{4}[- ](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b|$)',
-        re.IGNORECASE
-    )
-    # Match MM/DD followed by a fuel price (1.xxx to 9.xxx)
-    pair_re = re.compile(r'\b(\d{1,2})/(\d{1,2})\b\s*[\|,\s]+\s*([1-9]\.\d{3})\b')
+            rows = payload.get("response", {}).get("data", [])
+            if not rows:
+                raise ValueError(f"API returned no rows: {json.dumps(payload)[:300]}")
 
-    for row in row_re.finditer(text):
-        year = int(row.group(1))
-        mon  = MONTH_MAP[row.group(2).lower()]
-        chunk = row.group(3)
+            by_label = defaultdict(dict)
+            for row in rows:
+                sid    = row.get("series")
+                period = row.get("period")       # "YYYY-MM-DD"
+                raw    = row.get("value")
+                label  = ID_TO_LABEL.get(sid)
+                if not (label and period and raw is not None):
+                    continue
+                try:
+                    val = float(raw)
+                except (TypeError, ValueError):
+                    continue
+                if 0.5 <= val <= 15.0:           # sanity bounds
+                    by_label[label][period] = val
 
-        for pair in pair_re.finditer(chunk):
-            mo  = int(pair.group(1))
-            dy  = int(pair.group(2))
-            val = float(pair.group(3))
-            if not (1 <= mo <= 12 and 1 <= dy <= 31):
-                continue
-            # Handle Dec row with Jan dates (year boundary)
-            yr = year + 1 if (mo == 1 and mon == 12) else year
-            date_str = f"{yr}-{mo:02d}-{dy:02d}"
-            readings[date_str] = val
+            return {
+                label: [{"date": d, "value": v} for d, v in sorted(dates.items())]
+                for label, dates in by_label.items()
+            }
 
-    # Fallback: broader scan if primary found nothing
-    if not readings:
-        broad_re = re.compile(
-            r'\b(\d{4})[- ](Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b'
-            r'.*?(\d{1,2})/(\d{1,2}).*?([1-9]\.\d{3})',
-            re.IGNORECASE | re.DOTALL
-        )
-        for m in broad_re.finditer(text):
-            year = int(m.group(1))
-            mon  = MONTH_MAP[m.group(2).lower()]
-            mo, dy, val = int(m.group(3)), int(m.group(4)), float(m.group(5))
-            if not (1 <= mo <= 12 and 1 <= dy <= 31):
-                continue
-            yr = year + 1 if (mo == 1 and mon == 12) else year
-            readings[f"{yr}-{mo:02d}-{dy:02d}"] = val
+        except Exception as e:
+            last_err = e
+            print(f"  API attempt {attempt}/{retries} failed: {e}")
+            if attempt < retries:
+                time.sleep(backoff * attempt)
 
-    return [{"date": d, "value": v} for d, v in sorted(readings.items())]
+    raise RuntimeError(f"All API attempts failed: {last_err}")
 
 
-def rollup_monthly(weekly_readings, window_months=13):
-    """Average weekly readings by YYYY-MM, return last window_months months."""
+def rollup_monthly(weekly, window_months=13):
     by_month = defaultdict(list)
-    for r in weekly_readings:
+    for r in weekly:
         by_month[r["date"][:7]].append(r["value"])
     monthly = sorted(
-        [{"period": ym, "value": round(sum(v)/len(v), 3)}
+        [{"period": ym, "value": round(sum(v) / len(v), 3)}
          for ym, v in by_month.items() if v],
         key=lambda x: x["period"]
     )
     return monthly[-window_months:]
 
 
+def load_previous():
+    """Load existing data.json so failed series can keep last known data."""
+    try:
+        with open("data.json") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
 def main():
-    print(f"Fetching weekly EIA data for {len(SERIES)} series...")
-    errors      = []
-    monthly_out = {}
-    last4_out   = {}
-    prev4_out   = {}
+    if not API_KEY:
+        print("FATAL: EIA_API_KEY environment variable is not set.")
+        sys.exit(1)
 
-    for label, sid in SERIES.items():
-        try:
-            wk = fetch_weekly(sid)
-            if not wk:
-                raise ValueError("No data parsed")
+    prev = load_previous()
+    print(f"Fetching {len(SERIES)} series from EIA API v2 (single batched call)...")
 
-            monthly_out[label] = rollup_monthly(wk, window_months=13)
-            last4_out[label]   = wk[-4:] if len(wk) >= 4 else wk
-            prev_pool          = wk[:-4] if len(wk) > 4 else []
+    errors, stale = [], []
+    monthly_out, last4_out, prev4_out = {}, {}, {}
+
+    try:
+        all_weekly = fetch_all_weekly()
+    except Exception as e:
+        print(f"API completely unavailable: {e}")
+        all_weekly = {}
+
+    for label in SERIES:
+        wk = all_weekly.get(label, [])
+        if wk:
+            monthly_out[label] = rollup_monthly(wk)
+            last4_out[label]   = wk[-4:]
+            prev_pool          = wk[:-4]
             prev4_out[label]   = prev_pool[-4:] if len(prev_pool) >= 4 else prev_pool
+            print(f"  OK {label}: {len(wk)} weeks · latest {wk[-1]['date']}")
+        else:
+            # Merge: keep previous data if we had any
+            p_series = (prev.get("series") or {}).get(label)
+            p_last4  = (prev.get("weekly_last4") or {}).get(label)
+            p_prev4  = (prev.get("weekly_prev4") or {}).get(label)
+            if p_series:
+                monthly_out[label] = p_series
+                last4_out[label]   = p_last4 or []
+                prev4_out[label]   = p_prev4 or []
+                stale.append(label)
+                print(f"  STALE {label}: API returned nothing — kept previous data")
+            else:
+                errors.append(label)
+                print(f"  FAIL {label}: no fresh or previous data")
 
-            latest_wk = wk[-1]["date"] if wk else "—"
-            latest_mo = monthly_out[label][-1]["period"] if monthly_out[label] else "—"
-            print(f"  OK {label}: {len(wk)} weeks · latest {latest_wk} · month {latest_mo}")
-
-        except Exception as e:
-            print(f"  FAIL {label}: {e}")
-            errors.append(label)
-
-    # Build window — use US Average if available, else longest series
-    if "US Average" in monthly_out and monthly_out["US Average"]:
-        us_monthly = monthly_out["US Average"]
-    elif monthly_out:
-        us_monthly = max(monthly_out.values(), key=len)
-    else:
-        us_monthly = []
-
+    us_monthly = monthly_out.get("US Average") or (
+        max(monthly_out.values(), key=len) if monthly_out else []
+    )
     window = [r["period"] for r in us_monthly]
 
-    # L4W label
     us_last4 = last4_out.get("US Average", [])
     if len(us_last4) == 4:
         def fmt(d):
@@ -173,15 +190,20 @@ def main():
         "series":       monthly_out,
         "weekly_last4": last4_out,
         "weekly_prev4": prev4_out,
+        "stale":        stale,
         "errors":       errors,
     }
 
     with open("data.json", "w") as f:
         json.dump(payload, f, separators=(",", ":"))
 
-    status = "clean" if not errors else f"WARNING: {len(errors)} failed: {errors}"
+    status = "clean" if not (errors or stale) else f"stale={stale} errors={errors}"
     print(f"\nWrote data.json · {window[0] if window else '?'} to "
           f"{window[-1] if window else '?'} · {status}")
+
+    # Exit non-zero ONLY if we truly have nothing (so GitHub alerts you)
+    if errors and not monthly_out:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
