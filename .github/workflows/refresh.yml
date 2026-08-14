@@ -21,6 +21,8 @@ jobs:
           python-version: "3.12"
 
       - name: Fetch EIA data
+        env:
+          EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
         run: python fetch_data.py
 
       - name: Commit and push if data changed
