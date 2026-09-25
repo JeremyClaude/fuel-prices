@@ -58,7 +58,7 @@ def fetch_all_weekly(retries=3, backoff=20):
         ("data[0]", "value"),
         ("sort[0][column]", "period"),
         ("sort[0][direction]", "desc"),
-        ("length", "2000"),   # 15 series x ~60 weeks = ~900 rows; ample headroom
+        ("length", "5000"),   # window grows from Jan 2025 forward every week; generous headroom
     ]
     for sid in SERIES.values():
         params.append(("facets[series][]", sid))
@@ -105,16 +105,18 @@ def fetch_all_weekly(retries=3, backoff=20):
     raise RuntimeError(f"All API attempts failed: {last_err}")
 
 
-def rollup_monthly(weekly, window_months=13):
+WINDOW_START = "2025-01"  # chart always starts here, grows forward over time
+
+def rollup_monthly(weekly, start_period=WINDOW_START):
     by_month = defaultdict(list)
     for r in weekly:
         by_month[r["date"][:7]].append(r["value"])
     monthly = sorted(
         [{"period": ym, "value": round(sum(v) / len(v), 3)}
-         for ym, v in by_month.items() if v],
+         for ym, v in by_month.items() if v and ym >= start_period],
         key=lambda x: x["period"]
     )
-    return monthly[-window_months:]
+    return monthly
 
 
 def load_previous():
